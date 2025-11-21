@@ -18,7 +18,7 @@
 
 package org.apache.paimon.fs.local;
 
-import org.apache.paimon.catalog.CatalogContext;
+import org.apache.paimon.catalog.ICatalogContext;
 import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.fs.FileStatus;
 import org.apache.paimon.fs.Path;
@@ -69,7 +69,7 @@ public class LocalFileIO implements FileIO {
     }
 
     @Override
-    public void configure(CatalogContext context) {}
+    public void configure(ICatalogContext context) {}
 
     @Override
     public SeekableInputStream newInputStream(Path path) throws IOException {

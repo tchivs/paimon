@@ -18,7 +18,7 @@
 
 package org.apache.paimon.fs;
 
-import org.apache.paimon.catalog.CatalogContext;
+import org.apache.paimon.catalog.ICatalogContext;
 
 import java.io.IOException;
 import java.util.concurrent.ExecutorService;
@@ -32,7 +32,7 @@ public class FileIOUtils {
     public static final ExecutorService IO_THREAD_POOL =
             Executors.newCachedThreadPool(newDaemonThreadFactory("IO-THREAD-POOL"));
 
-    public static FileIOLoader checkAccess(FileIOLoader fileIO, Path path, CatalogContext config)
+    public static FileIOLoader checkAccess(FileIOLoader fileIO, Path path, ICatalogContext config)
             throws IOException {
         if (fileIO == null) {
             return null;

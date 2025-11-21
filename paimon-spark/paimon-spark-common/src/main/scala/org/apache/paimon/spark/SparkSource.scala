@@ -19,7 +19,7 @@
 package org.apache.paimon.spark
 
 import org.apache.paimon.CoreOptions
-import org.apache.paimon.catalog.{CatalogContext, CatalogUtils, Identifier}
+import org.apache.paimon.catalog.{CatalogHadoopContext, CatalogUtils, Identifier}
 import org.apache.paimon.options.Options
 import org.apache.paimon.spark.SparkSource.NAME
 import org.apache.paimon.spark.commands.WriteIntoPaimonTable
@@ -84,7 +84,7 @@ class SparkSource
 
   private def loadTable(options: JMap[String, String]): DataTable = {
     val path = CoreOptions.path(options)
-    val catalogContext = CatalogContext.create(
+    val catalogContext = CatalogHadoopContext.create(
       Options.fromMap(
         mergeSQLConfWithIdentifier(
           options,

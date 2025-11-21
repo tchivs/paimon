@@ -22,6 +22,7 @@ import org.apache.paimon.CoreOptions;
 import org.apache.paimon.catalog.Catalog;
 import org.apache.paimon.catalog.CatalogContext;
 import org.apache.paimon.catalog.CatalogFactory;
+import org.apache.paimon.catalog.CatalogHadoopContext;
 import org.apache.paimon.catalog.PropertyChange;
 import org.apache.paimon.function.Function;
 import org.apache.paimon.function.FunctionDefinition;
@@ -109,7 +110,7 @@ public class SparkCatalog extends SparkBaseCatalog
 
         this.catalogName = name;
         CatalogContext catalogContext =
-                CatalogContext.create(
+                CatalogHadoopContext.create(
                         Options.fromMap(options),
                         PaimonSparkSession$.MODULE$.active().sessionState().newHadoopConf());
         this.catalog = CatalogFactory.createCatalog(catalogContext);

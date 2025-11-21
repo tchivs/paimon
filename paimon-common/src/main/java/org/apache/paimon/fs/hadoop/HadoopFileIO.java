@@ -19,7 +19,8 @@
 package org.apache.paimon.fs.hadoop;
 
 import org.apache.paimon.annotation.VisibleForTesting;
-import org.apache.paimon.catalog.CatalogContext;
+import org.apache.paimon.catalog.HadoopAware;
+import org.apache.paimon.catalog.ICatalogContext;
 import org.apache.paimon.fs.FileIO;
 import org.apache.paimon.fs.FileStatus;
 import org.apache.paimon.fs.Path;
@@ -67,8 +68,13 @@ public class HadoopFileIO implements FileIO {
     }
 
     @Override
-    public void configure(CatalogContext context) {
-        this.hadoopConf = new SerializableConfiguration(context.hadoopConf());
+    public void configure(ICatalogContext context) {
+        if (!(context instanceof HadoopAware)) {
+            throw new IllegalArgumentException(
+                    "HadoopFileIO requires a HadoopAware context, but got: "
+                            + context.getClass().getName());
+        }
+        this.hadoopConf = new SerializableConfiguration(((HadoopAware) context).hadoopConf());
     }
 
     @Override

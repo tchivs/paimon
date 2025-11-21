@@ -18,7 +18,7 @@
 
 package org.apache.paimon.fs;
 
-import org.apache.paimon.catalog.CatalogContext;
+import org.apache.paimon.catalog.ICatalogContext;
 import org.apache.paimon.options.Options;
 
 import java.io.IOException;
@@ -36,7 +36,7 @@ public abstract class PluginFileIO implements FileIO {
     private transient volatile FileIO lazyFileIO;
 
     @Override
-    public void configure(CatalogContext context) {
+    public void configure(ICatalogContext context) {
         // Do not get Hadoop Configuration in CatalogOptions
         // The class is in different classloader from pluginClassLoader!
         this.options = context.options();

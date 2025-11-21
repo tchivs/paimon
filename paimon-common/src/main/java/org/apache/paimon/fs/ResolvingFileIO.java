@@ -20,6 +20,9 @@ package org.apache.paimon.fs;
 
 import org.apache.paimon.annotation.VisibleForTesting;
 import org.apache.paimon.catalog.CatalogContext;
+import org.apache.paimon.catalog.CatalogHadoopContext;
+import org.apache.paimon.catalog.HadoopAware;
+import org.apache.paimon.catalog.ICatalogContext;
 import org.apache.paimon.options.CatalogOptions;
 import org.apache.paimon.options.Options;
 
@@ -58,13 +61,22 @@ public class ResolvingFileIO implements FileIO {
     }
 
     @Override
-    public void configure(CatalogContext context) {
+    public void configure(ICatalogContext context) {
         Options options = new Options();
         context.options().toMap().forEach(options::set);
         options.set(RESOLVING_FILE_IO_ENABLED, false);
-        this.context =
-                CatalogContext.create(
-                        options, context.hadoopConf(), context.preferIO(), context.fallbackIO());
+        if (context instanceof HadoopAware) {
+            this.context =
+                    CatalogHadoopContext.create(
+                            options,
+                            ((HadoopAware) context).hadoopConf(),
+                            context.preferIO(),
+                            context.fallbackIO());
+        } else {
+            throw new IllegalArgumentException(
+                    "ResolvingFileIO requires a HadoopAware context, but got: "
+                            + context.getClass().getName());
+        }
     }
 
     @Override

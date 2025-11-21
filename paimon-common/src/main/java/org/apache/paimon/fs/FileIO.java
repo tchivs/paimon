@@ -19,7 +19,7 @@
 package org.apache.paimon.fs;
 
 import org.apache.paimon.annotation.Public;
-import org.apache.paimon.catalog.CatalogContext;
+import org.apache.paimon.catalog.ICatalogContext;
 import org.apache.paimon.fs.hadoop.HadoopFileIOLoader;
 import org.apache.paimon.fs.local.LocalFileIO;
 
@@ -70,8 +70,8 @@ public interface FileIO extends Serializable, Closeable {
 
     boolean isObjectStore();
 
-    /** Configure by {@link CatalogContext}. */
-    void configure(CatalogContext context);
+    /** Configure by {@link ICatalogContext}. */
+    void configure(ICatalogContext context);
 
     /**
      * Opens an SeekableInputStream at the indicated Path.
@@ -424,7 +424,7 @@ public interface FileIO extends Serializable, Closeable {
      * Returns a reference to the {@link FileIO} instance for accessing the file system identified
      * by the given path.
      */
-    static FileIO get(Path path, CatalogContext config) throws IOException {
+    static FileIO get(Path path, ICatalogContext config) throws IOException {
         if (config.options().get(RESOLVING_FILE_IO_ENABLED)) {
             FileIO fileIO = new ResolvingFileIO();
             fileIO.configure(config);

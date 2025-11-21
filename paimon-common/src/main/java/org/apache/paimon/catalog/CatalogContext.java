@@ -21,17 +21,14 @@ package org.apache.paimon.catalog;
 import org.apache.paimon.annotation.Public;
 import org.apache.paimon.fs.FileIOLoader;
 import org.apache.paimon.fs.Path;
-import org.apache.paimon.hadoop.SerializableConfiguration;
 import org.apache.paimon.options.Options;
-
-import org.apache.hadoop.conf.Configuration;
 
 import javax.annotation.Nullable;
 
-import java.io.Serializable;
+import java.io.Serial;
 
 import static org.apache.paimon.options.CatalogOptions.WAREHOUSE;
-import static org.apache.paimon.utils.HadoopUtils.getHadoopConfiguration;
+import static org.apache.paimon.utils.HadoopUtils.HADOOP_LOAD_DEFAULT_CONFIG;
 import static org.apache.paimon.utils.Preconditions.checkNotNull;
 
 /**
@@ -40,26 +37,25 @@ import static org.apache.paimon.utils.Preconditions.checkNotNull;
  * @since 0.4.0
  */
 @Public
-public class CatalogContext implements Serializable {
+public class CatalogContext implements ICatalogContext {
 
-    private static final long serialVersionUID = 1L;
+    @Serial private static final long serialVersionUID = 1L;
 
-    private final Options options;
-    private final SerializableConfiguration hadoopConf;
-    @Nullable private final FileIOLoader preferIOLoader;
-    @Nullable private final FileIOLoader fallbackIOLoader;
+    protected final Options options;
+    @Nullable protected final FileIOLoader preferIOLoader;
+    @Nullable protected final FileIOLoader fallbackIOLoader;
 
-    private CatalogContext(
+    protected CatalogContext(
             Options options,
-            @Nullable Configuration hadoopConf,
             @Nullable FileIOLoader preferIOLoader,
             @Nullable FileIOLoader fallbackIOLoader) {
         this.options = checkNotNull(options);
-        this.hadoopConf =
-                new SerializableConfiguration(
-                        hadoopConf == null ? getHadoopConfiguration(options) : hadoopConf);
         this.preferIOLoader = preferIOLoader;
         this.fallbackIOLoader = fallbackIOLoader;
+    }
+
+    public CatalogContext copy(Options options) {
+        return create(options, this.preferIOLoader, this.fallbackIOLoader);
     }
 
     public static CatalogContext create(Path warehouse) {
@@ -69,37 +65,26 @@ public class CatalogContext implements Serializable {
     }
 
     public static CatalogContext create(Options options) {
-        return new CatalogContext(options, null, null, null);
-    }
-
-    public static CatalogContext create(Options options, Configuration hadoopConf) {
-        return new CatalogContext(options, hadoopConf, null, null);
+        return create(options, null, null);
     }
 
     public static CatalogContext create(Options options, FileIOLoader fallbackIOLoader) {
-        return new CatalogContext(options, null, null, fallbackIOLoader);
+        return create(options, null, fallbackIOLoader);
     }
 
     public static CatalogContext create(
             Options options, FileIOLoader preferIOLoader, FileIOLoader fallbackIOLoader) {
-        return new CatalogContext(options, null, preferIOLoader, fallbackIOLoader);
+        return shouldLoadHadoop(options)
+                ? CatalogHadoopContext.create(options, preferIOLoader, fallbackIOLoader)
+                : new CatalogContext(options, preferIOLoader, fallbackIOLoader);
     }
 
-    public static CatalogContext create(
-            Options options,
-            Configuration hadoopConf,
-            FileIOLoader preferIOLoader,
-            FileIOLoader fallbackIOLoader) {
-        return new CatalogContext(options, hadoopConf, preferIOLoader, fallbackIOLoader);
+    private static boolean shouldLoadHadoop(Options options) {
+        return options.getBoolean(HADOOP_LOAD_DEFAULT_CONFIG.key(), false);
     }
 
     public Options options() {
         return options;
-    }
-
-    /** Return hadoop {@link Configuration}. */
-    public Configuration hadoopConf() {
-        return hadoopConf.get();
     }
 
     @Nullable
