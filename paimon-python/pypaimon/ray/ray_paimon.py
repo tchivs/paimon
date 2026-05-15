@@ -117,6 +117,12 @@ def write_paimon(
 ) -> None:
     """Write a Ray Dataset to a Paimon table.
 
+    For HASH_FIXED tables, rows are automatically clustered by
+    ``(partition_keys..., bucket)`` before writing so that each
+    (partition, bucket) lands in a single Ray task. This avoids the
+    small-file storm that Ray's default round-robin distribution would
+    otherwise produce. No user configuration is required.
+
     Args:
         dataset: The Ray Dataset to write.
         table_identifier: Full table name, e.g. ``"db_name.table_name"``.
@@ -126,10 +132,13 @@ def write_paimon(
         ray_remote_args: Optional kwargs passed to ``ray.remote`` in write tasks.
     """
     from pypaimon.catalog.catalog_factory import CatalogFactory
+    from pypaimon.ray.shuffle import maybe_apply_repartition
     from pypaimon.write.ray_datasink import PaimonDatasink
 
     catalog = CatalogFactory.create(catalog_options)
     table = catalog.get_table(table_identifier)
+
+    dataset = maybe_apply_repartition(dataset, table)
 
     datasink = PaimonDatasink(table, overwrite=overwrite)
 

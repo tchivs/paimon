@@ -207,6 +207,20 @@ write_paimon(
 )
 ```
 
+**Automatic (partition, bucket) clustering for HASH_FIXED tables:**
+
+For HASH_FIXED tables, `write_paimon` automatically clusters rows by
+`(partition_keys..., bucket)` before writing so each (partition,
+bucket) lands in a single Ray task — one writer, one file group. This
+avoids the small-file storm that Ray's default round-robin
+distribution would otherwise produce (`partitions × buckets ×
+ray_tasks` files instead of `partitions × buckets`).
+
+Bucket assignment uses the same hash routine the writer uses, so the
+bucket seen by the groupby is byte-equivalent to the one the writer
+would compute. No user configuration is required. For non-HASH_FIXED
+tables the dataset is written as-is.
+
 **Parameters:**
 - `dataset`: the Ray Dataset to write.
 - `table_identifier`: full table name, e.g. `"db_name.table_name"`.
