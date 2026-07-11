@@ -62,6 +62,10 @@ public class RenamingSnapshotCommit implements SnapshotCommit {
             List<PartitionStatistics> statistics,
             @Nullable CommitValidator validator)
             throws Exception {
+        if (validator != null && fileIO.isObjectStore() && lock instanceof Lock.EmptyLock) {
+            throw new UnsupportedOperationException(
+                    "Atomic snapshot validation requires a configured Paimon catalog lock for object-store tables");
+        }
         Path newSnapshotPath =
                 snapshotManager.branch().equals(branch)
                         ? snapshotManager.snapshotPath(snapshot.id())

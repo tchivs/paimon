@@ -168,6 +168,30 @@ public class RenamingSnapshotCommitTest {
         assertThat(fileIO.exists(snapshotManager.snapshotPath(1L))).isFalse();
     }
 
+    @Test
+    public void testObjectStoreRequiresCatalogLockForValidator(@TempDir java.nio.file.Path tmp)
+            throws Exception {
+        FileIO fileIO = new ObjectStoreLocalFileIO();
+        Path tablePath = new Path(tmp.toUri());
+        SnapshotManager snapshotManager = new SnapshotManager(fileIO, tablePath, null, null, null);
+        RenamingSnapshotCommit commit = new RenamingSnapshotCommit(snapshotManager, Lock.empty());
+
+        UnsupportedOperationException exception =
+                assertThrows(
+                        UnsupportedOperationException.class,
+                        () ->
+                                commit.commit(
+                                        createSnapshot(1L),
+                                        "main",
+                                        Collections.emptyList(),
+                                        (latest, committing) -> true));
+
+        assertThat(exception)
+                .hasMessageContaining("configured Paimon catalog lock")
+                .hasMessageContaining("object-store");
+        assertThat(fileIO.exists(snapshotManager.snapshotPath(1L))).isFalse();
+    }
+
     private static Snapshot createSnapshot(long id) throws IOException {
         long schemaId = 1L;
         String baseManifestList = "manifest-list-base";
@@ -235,6 +259,13 @@ public class RenamingSnapshotCommitTest {
                 Files.createDirectories(parent.getParent());
                 return false;
             }
+        }
+    }
+
+    private static class ObjectStoreLocalFileIO extends LocalFileIO {
+        @Override
+        public boolean isObjectStore() {
+            return true;
         }
     }
 }
