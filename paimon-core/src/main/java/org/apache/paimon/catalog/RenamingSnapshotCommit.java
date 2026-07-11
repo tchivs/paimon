@@ -56,13 +56,20 @@ public class RenamingSnapshotCommit implements SnapshotCommit {
     }
 
     @Override
+    public boolean supportsAtomicCommitValidation() {
+        // Local filesystems provide atomic rename, so the caller may use an explicit single-writer
+        // contract. Object stores need the configured Paimon catalog lock for the same boundary.
+        return !fileIO.isObjectStore() || !(lock instanceof Lock.EmptyLock);
+    }
+
+    @Override
     public boolean commit(
             Snapshot snapshot,
             String branch,
             List<PartitionStatistics> statistics,
             @Nullable CommitValidator validator)
             throws Exception {
-        if (validator != null && fileIO.isObjectStore() && lock instanceof Lock.EmptyLock) {
+        if (validator != null && !supportsAtomicCommitValidation()) {
             throw new UnsupportedOperationException(
                     "Atomic snapshot validation requires a configured Paimon catalog lock for object-store tables");
         }

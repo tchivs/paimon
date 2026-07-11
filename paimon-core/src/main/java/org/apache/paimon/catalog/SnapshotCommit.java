@@ -32,6 +32,17 @@ public interface SnapshotCommit extends AutoCloseable {
             throws Exception;
 
     /**
+     * Whether this implementation can invoke a {@link CommitValidator} at its atomic publication
+     * boundary.
+     *
+     * <p>Implementations must return {@code false} unless the validator and snapshot publication
+     * share the same serialization boundary.
+     */
+    default boolean supportsAtomicCommitValidation() {
+        return false;
+    }
+
+    /**
      * Commit a snapshot after validating it under the implementation's atomic commit boundary.
      * Implementations which cannot provide that boundary must reject a non-null validator.
      */

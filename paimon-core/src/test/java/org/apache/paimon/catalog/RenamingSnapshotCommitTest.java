@@ -57,6 +57,7 @@ public class RenamingSnapshotCommitTest {
         SnapshotManager snapshotManager = new SnapshotManager(fileIO, tablePath, null, null, null);
 
         RenamingSnapshotCommit commit = new RenamingSnapshotCommit(snapshotManager, Lock.empty());
+        assertThat(commit.supportsAtomicCommitValidation()).isTrue();
 
         Snapshot snapshot = createSnapshot(1L);
 
@@ -175,6 +176,7 @@ public class RenamingSnapshotCommitTest {
         Path tablePath = new Path(tmp.toUri());
         SnapshotManager snapshotManager = new SnapshotManager(fileIO, tablePath, null, null, null);
         RenamingSnapshotCommit commit = new RenamingSnapshotCommit(snapshotManager, Lock.empty());
+        assertThat(commit.supportsAtomicCommitValidation()).isFalse();
 
         UnsupportedOperationException exception =
                 assertThrows(
