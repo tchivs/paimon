@@ -24,6 +24,7 @@ import org.apache.paimon.Snapshot;
 import org.apache.paimon.TestAppendFileStore;
 import org.apache.paimon.TestFileStore;
 import org.apache.paimon.TestKeyValueGenerator;
+import org.apache.paimon.catalog.CommitValidationException;
 import org.apache.paimon.catalog.RenamingSnapshotCommit;
 import org.apache.paimon.catalog.SnapshotCommit;
 import org.apache.paimon.data.BinaryRow;
@@ -1188,6 +1189,35 @@ public class FileStoreCommitTest {
     }
 
     @Test
+    public void testCommitValidationFailureIsNotRetried() throws Exception {
+        TestFileStore store = createStore(false);
+        AtomicReference<ManifestCommittable> committableRef = new AtomicReference<>();
+        store.commitDataImpl(
+                Collections.singletonList(gen.next()),
+                gen::getPartition,
+                value -> 0,
+                false,
+                19L,
+                null,
+                Collections.emptyList(),
+                (commit, committable) -> committableRef.set(committable));
+
+        RejectingValidationSnapshotCommit snapshotCommit =
+                new RejectingValidationSnapshotCommit(
+                        new RenamingSnapshotCommit(store.snapshotManager(), Lock.empty()));
+        try (FileStoreCommitImpl commit =
+                newCommitWithSnapshotCommit(store, "validation-failure", snapshotCommit)) {
+            commit.withCommitValidator((latest, committing) -> true);
+            assertThatThrownBy(() -> commit.commit(checkNotNull(committableRef.get()), false))
+                    .isInstanceOf(CommitValidationException.class)
+                    .hasMessage("stale KEY_DYNAMIC routing");
+        }
+
+        assertThat(snapshotCommit.validationCalls).isEqualTo(1);
+        assertThat(store.snapshotManager().latestSnapshot()).isNull();
+    }
+
+    @Test
     public void testCommitRetryReusePreviousManifestMergeResultWhenBeforeStillExists()
             throws Exception {
         TestFileStore store =
@@ -1865,6 +1895,41 @@ public class FileStoreCommitTest {
                 return false;
             }
             return committed;
+        }
+
+        @Override
+        public void close() throws Exception {
+            delegate.close();
+        }
+    }
+
+    private static class RejectingValidationSnapshotCommit implements SnapshotCommit {
+
+        private final SnapshotCommit delegate;
+        private int validationCalls;
+
+        private RejectingValidationSnapshotCommit(SnapshotCommit delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public boolean commit(
+                Snapshot snapshot,
+                String branch,
+                List<org.apache.paimon.partition.PartitionStatistics> statistics)
+                throws Exception {
+            return delegate.commit(snapshot, branch, statistics);
+        }
+
+        @Override
+        public boolean commit(
+                Snapshot snapshot,
+                String branch,
+                List<org.apache.paimon.partition.PartitionStatistics> statistics,
+                org.apache.paimon.catalog.CommitValidator validator)
+                throws Exception {
+            validationCalls++;
+            throw new CommitValidationException("stale KEY_DYNAMIC routing");
         }
 
         @Override

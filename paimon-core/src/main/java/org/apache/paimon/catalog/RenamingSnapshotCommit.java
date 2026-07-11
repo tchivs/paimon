@@ -25,6 +25,8 @@ import org.apache.paimon.operation.Lock;
 import org.apache.paimon.partition.PartitionStatistics;
 import org.apache.paimon.utils.SnapshotManager;
 
+import javax.annotation.Nullable;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -49,6 +51,16 @@ public class RenamingSnapshotCommit implements SnapshotCommit {
 
     @Override
     public boolean commit(Snapshot snapshot, String branch, List<PartitionStatistics> statistics)
+            throws Exception {
+        return commit(snapshot, branch, statistics, null);
+    }
+
+    @Override
+    public boolean commit(
+            Snapshot snapshot,
+            String branch,
+            List<PartitionStatistics> statistics,
+            @Nullable CommitValidator validator)
             throws Exception {
         Path newSnapshotPath =
                 snapshotManager.branch().equals(branch)
@@ -78,13 +90,22 @@ public class RenamingSnapshotCommit implements SnapshotCommit {
                     return committed;
                 };
         return lock.runWithLock(
-                () ->
-                        // fs.rename may not returns false if target file
-                        // already exists, or even not atomic
-                        // as we're relying on external locking, we can first
-                        // check if file exist then rename to work around this
-                        // case
-                        !fileIO.exists(newSnapshotPath) && callable.call());
+                () -> {
+                    Snapshot latestSnapshot = snapshotManager.latestSnapshot();
+                    if (latestSnapshot != null && latestSnapshot.id() >= snapshot.id()) {
+                        return false;
+                    }
+                    if (validator != null && !validator.validate(latestSnapshot, snapshot)) {
+                        return false;
+                    }
+                    return
+                    // fs.rename may not returns false if target file
+                    // already exists, or even not atomic
+                    // as we're relying on external locking, we can first
+                    // check if file exist then rename to work around this
+                    // case
+                    !fileIO.exists(newSnapshotPath) && callable.call();
+                });
     }
 
     @Override

@@ -22,6 +22,8 @@ import org.apache.paimon.CoreOptions;
 import org.apache.paimon.Snapshot;
 import org.apache.paimon.Snapshot.CommitKind;
 import org.apache.paimon.annotation.VisibleForTesting;
+import org.apache.paimon.catalog.CommitValidationException;
+import org.apache.paimon.catalog.CommitValidator;
 import org.apache.paimon.catalog.SnapshotCommit;
 import org.apache.paimon.data.BinaryRow;
 import org.apache.paimon.data.InternalRow;
@@ -164,6 +166,7 @@ public class FileStoreCommitImpl implements FileStoreCommit {
     private boolean appendCommitCheckConflict = false;
     private long lastCommittedSnapshotId = -1L;
     @Nullable private Snapshot.Operation operation;
+    @Nullable private CommitValidator commitValidator;
 
     public FileStoreCommitImpl(
             SnapshotCommit snapshotCommit,
@@ -255,6 +258,12 @@ public class FileStoreCommitImpl implements FileStoreCommit {
     @Override
     public FileStoreCommit withOperation(Snapshot.Operation operation) {
         this.operation = operation;
+        return this;
+    }
+
+    @Override
+    public FileStoreCommitImpl withCommitValidator(@Nullable CommitValidator validator) {
+        this.commitValidator = validator;
         return this;
     }
 
@@ -1138,6 +1147,8 @@ public class FileStoreCommitImpl implements FileStoreCommit {
                         callback.call(finalBaseFiles, finalDeltaFiles, indexFiles, newSnapshot));
         try {
             success = commitSnapshotImpl(newSnapshot, deltaStatistics);
+        } catch (CommitValidationException | UnsupportedOperationException e) {
+            throw e;
         } catch (Exception e) {
             // commit exception, not sure about the situation and should not clean up the files
             LOG.warn("Retry commit for exception.", e);
@@ -1361,8 +1372,19 @@ public class FileStoreCommitImpl implements FileStoreCommit {
             for (PartitionEntry entry : deltaStatistics) {
                 statistics.add(entry.toPartitionStatistics(partitionComputer));
             }
-            return snapshotCommit.commit(newSnapshot, options.branch(), statistics);
+            CommitValidator validator =
+                    newSnapshot.commitKind() == CommitKind.APPEND
+                                    || newSnapshot.commitKind() == CommitKind.OVERWRITE
+                            ? commitValidator
+                            : null;
+            return snapshotCommit.commit(newSnapshot, options.branch(), statistics, validator);
         } catch (Throwable e) {
+            if (e instanceof CommitValidationException) {
+                throw (CommitValidationException) e;
+            }
+            if (e instanceof UnsupportedOperationException) {
+                throw (UnsupportedOperationException) e;
+            }
             // exception when performing the atomic rename,
             // we cannot clean up because we can't determine the success
             throw new RuntimeException(

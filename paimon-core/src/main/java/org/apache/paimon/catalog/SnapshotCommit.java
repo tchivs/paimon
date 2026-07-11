@@ -21,6 +21,8 @@ package org.apache.paimon.catalog;
 import org.apache.paimon.Snapshot;
 import org.apache.paimon.partition.PartitionStatistics;
 
+import javax.annotation.Nullable;
+
 import java.util.List;
 
 /** Interface to commit snapshot atomically. */
@@ -28,4 +30,21 @@ public interface SnapshotCommit extends AutoCloseable {
 
     boolean commit(Snapshot snapshot, String branch, List<PartitionStatistics> statistics)
             throws Exception;
+
+    /**
+     * Commit a snapshot after validating it under the implementation's atomic commit boundary.
+     * Implementations which cannot provide that boundary must reject a non-null validator.
+     */
+    default boolean commit(
+            Snapshot snapshot,
+            String branch,
+            List<PartitionStatistics> statistics,
+            @Nullable CommitValidator validator)
+            throws Exception {
+        if (validator != null) {
+            throw new UnsupportedOperationException(
+                    "This snapshot commit implementation does not support atomic commit validation");
+        }
+        return commit(snapshot, branch, statistics);
+    }
 }

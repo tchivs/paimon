@@ -18,6 +18,7 @@
 
 package org.apache.paimon.table.sink;
 
+import org.apache.paimon.catalog.CommitValidator;
 import org.apache.paimon.metrics.MetricRegistry;
 
 import javax.annotation.Nullable;
@@ -49,6 +50,9 @@ public interface InnerTableCommit extends StreamTableCommit, BatchTableCommit {
     InnerTableCommit appendCommitCheckConflict(boolean appendCommitCheckConflict);
 
     InnerTableCommit rowIdCheckConflict(@Nullable Long rowIdCheckFromSnapshot);
+
+    @Override
+    InnerTableCommit withCommitValidator(@Nullable CommitValidator validator);
 
     @Override
     InnerTableCommit withMetricRegistry(MetricRegistry registry);

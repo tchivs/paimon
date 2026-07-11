@@ -31,7 +31,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -99,6 +101,71 @@ public class RenamingSnapshotCommitTest {
 
         // ensure snapshot file is not accidentally created
         assertThat(fileIO.exists(snapshotManager.snapshotPath(snapshot.id()))).isFalse();
+    }
+
+    @Test
+    public void testValidatorRunsBeforePublicationAndCanRequestRetry(
+            @TempDir java.nio.file.Path tmp) throws Exception {
+        FileIO fileIO = LocalFileIO.create();
+        Path tablePath = new Path(tmp.toUri());
+        SnapshotManager snapshotManager = new SnapshotManager(fileIO, tablePath, null, null, null);
+        RenamingSnapshotCommit commit = new RenamingSnapshotCommit(snapshotManager, Lock.empty());
+        List<Snapshot> observed = new ArrayList<>();
+
+        assertThat(
+                        commit.commit(
+                                createSnapshot(1L),
+                                "main",
+                                Collections.emptyList(),
+                                (latest, committing) -> {
+                                    observed.add(latest);
+                                    return false;
+                                }))
+                .isFalse();
+        assertThat(observed).containsExactly((Snapshot) null);
+        assertThat(fileIO.exists(snapshotManager.snapshotPath(1L))).isFalse();
+
+        assertThat(
+                        commit.commit(
+                                createSnapshot(1L),
+                                "main",
+                                Collections.emptyList(),
+                                (latest, committing) -> true))
+                .isTrue();
+        assertThat(
+                        commit.commit(
+                                createSnapshot(1L),
+                                "main",
+                                Collections.emptyList(),
+                                (latest, committing) -> {
+                                    throw new AssertionError(
+                                            "validator must not run after publication");
+                                }))
+                .isFalse();
+    }
+
+    @Test
+    public void testValidatorFailureIsNotConvertedToRetry(@TempDir java.nio.file.Path tmp)
+            throws Exception {
+        FileIO fileIO = LocalFileIO.create();
+        Path tablePath = new Path(tmp.toUri());
+        SnapshotManager snapshotManager = new SnapshotManager(fileIO, tablePath, null, null, null);
+        RenamingSnapshotCommit commit = new RenamingSnapshotCommit(snapshotManager, Lock.empty());
+
+        CommitValidationException exception =
+                assertThrows(
+                        CommitValidationException.class,
+                        () ->
+                                commit.commit(
+                                        createSnapshot(1L),
+                                        "main",
+                                        Collections.emptyList(),
+                                        (latest, committing) -> {
+                                            throw new CommitValidationException(
+                                                    "stale KEY_DYNAMIC routing");
+                                        }));
+        assertThat(exception).hasMessage("stale KEY_DYNAMIC routing");
+        assertThat(fileIO.exists(snapshotManager.snapshotPath(1L))).isFalse();
     }
 
     private static Snapshot createSnapshot(long id) throws IOException {

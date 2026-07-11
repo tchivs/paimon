@@ -21,7 +21,10 @@ package org.apache.paimon.table.sink;
 import org.apache.paimon.Snapshot;
 import org.apache.paimon.Snapshot.CommitKind;
 import org.apache.paimon.annotation.Public;
+import org.apache.paimon.catalog.CommitValidator;
 import org.apache.paimon.stats.Statistics;
+
+import javax.annotation.Nullable;
 
 import java.util.List;
 import java.util.Map;
@@ -75,6 +78,18 @@ public interface BatchTableCommit extends TableCommit {
 
     /** Set the logical operation type (e.g. WRITE, DELETE, MERGE) recorded in the snapshot. */
     default BatchTableCommit withOperation(Snapshot.Operation operation) {
+        return this;
+    }
+
+    /**
+     * Validate a snapshot while the catalog's atomic commit boundary is held. Implementations which
+     * cannot provide this guarantee must reject a non-null validator.
+     */
+    default BatchTableCommit withCommitValidator(@Nullable CommitValidator validator) {
+        if (validator != null) {
+            throw new UnsupportedOperationException(
+                    "This batch commit implementation does not support atomic commit validation");
+        }
         return this;
     }
 }
