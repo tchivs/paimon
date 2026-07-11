@@ -103,6 +103,7 @@ public class JdbcCatalog extends AbstractCatalog {
     private static final int LOCAL_LOCK_STRIPES = 64;
 
     private final JdbcClientPool connections;
+    private final JdbcCatalogLockContext lockContext;
     private final String catalogKey;
     private final Options options;
     private final String warehouse;
@@ -127,6 +128,7 @@ public class JdbcCatalog extends AbstractCatalog {
                         options.get(CatalogOptions.CLIENT_POOL_SIZE),
                         options.get(CatalogOptions.URI.key()),
                         options.toMap());
+        this.lockContext = new JdbcCatalogLockContext(catalogKey, options, connections);
         try {
             initializeCatalogTablesIfNeed();
         } catch (SQLException e) {
@@ -700,7 +702,7 @@ public class JdbcCatalog extends AbstractCatalog {
 
     @Override
     public Optional<CatalogLockContext> lockContext() {
-        return Optional.of(new JdbcCatalogLockContext(catalogKey, options));
+        return Optional.of(lockContext);
     }
 
     public <T> T runWithLock(Identifier identifier, Callable<T> callable) throws Exception {

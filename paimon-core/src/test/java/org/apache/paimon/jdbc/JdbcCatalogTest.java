@@ -144,6 +144,34 @@ public class JdbcCatalogTest extends CatalogTestBase {
     }
 
     @Test
+    public void testCatalogLockFactoryClosesOwnedConnectionPool() throws Exception {
+        JdbcClientPool connections =
+                new JdbcClientPool(
+                        1,
+                        "jdbc:sqlite:file:"
+                                + UUID.randomUUID().toString().replace("-", "")
+                                + "?mode=memory&cache=shared",
+                        Collections.emptyMap());
+        JdbcCatalogLock lock = new JdbcCatalogLock(connections, "test", 1000, 1000, true);
+
+        lock.close();
+
+        assertThatThrownBy(() -> connections.run(client -> true))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Cannot get a client from a closed pool");
+    }
+
+    @Test
+    public void testCatalogLockContextSharesCatalogConnectionPool() {
+        JdbcCatalog jdbcCatalog = (JdbcCatalog) catalog;
+        JdbcCatalogLockContext lockContext =
+                (JdbcCatalogLockContext) jdbcCatalog.lockContext().get();
+
+        assertThat(lockContext.connections()).isSameAs(jdbcCatalog.getConnections());
+        assertThat(lockContext.ownsConnections()).isFalse();
+    }
+
+    @Test
     public void testUpperCase() throws Exception {
         catalog.createDatabase("test_db", false);
         assertThatThrownBy(

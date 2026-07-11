@@ -26,12 +26,19 @@ import org.apache.paimon.options.Options;
 public class JdbcCatalogLockContext implements CatalogLockContext {
 
     private transient JdbcClientPool connections;
+    private transient boolean ownsConnections;
     private final String catalogKey;
     private final Options options;
 
     public JdbcCatalogLockContext(String catalogKey, Options options) {
+        this(catalogKey, options, null);
+        this.ownsConnections = true;
+    }
+
+    JdbcCatalogLockContext(String catalogKey, Options options, JdbcClientPool connections) {
         this.catalogKey = catalogKey;
         this.options = options;
+        this.connections = connections;
     }
 
     @Override
@@ -46,8 +53,13 @@ public class JdbcCatalogLockContext implements CatalogLockContext {
                             options.get(CatalogOptions.CLIENT_POOL_SIZE),
                             options.get(CatalogOptions.URI.key()),
                             options.toMap());
+            ownsConnections = true;
         }
         return connections;
+    }
+
+    boolean ownsConnections() {
+        return ownsConnections;
     }
 
     public String catalogKey() {
