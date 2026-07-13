@@ -837,6 +837,12 @@ public class JdbcUtils {
                 .releaseLock(connections, lockId, ownerId);
     }
 
+    public static boolean renew(JdbcClientPool connections, String lockId, String ownerId)
+            throws SQLException, InterruptedException {
+        return DistributedLockDialectFactory.create(connections.getProtocol())
+                .renewLock(connections, lockId, ownerId);
+    }
+
     private static String deletePropertiesStatement(Set<String> properties) {
         StringBuilder sqlStatement = new StringBuilder(JdbcUtils.DELETE_DATABASE_PROPERTIES_SQL);
         String values =

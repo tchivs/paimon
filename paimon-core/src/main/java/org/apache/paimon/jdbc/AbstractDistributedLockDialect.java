@@ -156,6 +156,22 @@ public abstract class AbstractDistributedLockDialect implements JdbcDistributedL
     public abstract String getReleaseLockSql();
 
     @Override
+    public boolean renewLock(JdbcClientPool connections, String lockId, String ownerId)
+            throws SQLException, InterruptedException {
+        return connections.run(
+                connection -> {
+                    try (PreparedStatement preparedStatement =
+                            connection.prepareStatement(getRenewLockSql())) {
+                        preparedStatement.setString(1, lockId);
+                        preparedStatement.setString(2, ownerId);
+                        return preparedStatement.executeUpdate() > 0;
+                    }
+                });
+    }
+
+    public abstract String getRenewLockSql();
+
+    @Override
     public int tryReleaseTimedOutLock(JdbcClientPool connections, String lockId)
             throws SQLException, InterruptedException {
         return connections.run(

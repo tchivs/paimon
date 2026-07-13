@@ -34,6 +34,9 @@ public interface JdbcDistributedLockDialect {
     boolean releaseLock(JdbcClientPool connections, String lockId, String ownerId)
             throws SQLException, InterruptedException;
 
+    boolean renewLock(JdbcClientPool connections, String lockId, String ownerId)
+            throws SQLException, InterruptedException;
+
     int tryReleaseTimedOutLock(JdbcClientPool connections, String lockId)
             throws SQLException, InterruptedException;
 }

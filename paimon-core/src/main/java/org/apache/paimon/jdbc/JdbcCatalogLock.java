@@ -27,6 +27,11 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.paimon.options.CatalogOptions.LOCK_ACQUIRE_TIMEOUT;
 import static org.apache.paimon.options.CatalogOptions.LOCK_CHECK_MAX_SLEEP;
@@ -65,10 +70,52 @@ public class JdbcCatalogLock implements CatalogLock {
         String lockUniqueName = String.format("%s.%s.%s", catalogKey, database, table);
         String ownerId = UUID.randomUUID().toString();
         lock(lockUniqueName, ownerId);
+        AtomicReference<Exception> renewalFailure = new AtomicReference<>();
+        ScheduledExecutorService heartbeatExecutor =
+                Executors.newSingleThreadScheduledExecutor(
+                        runnable -> {
+                            Thread thread = new Thread(runnable, "paimon-jdbc-lock-heartbeat");
+                            thread.setDaemon(true);
+                            return thread;
+                        });
+        long heartbeatIntervalMillis = Math.max(100, acquireTimeout / 3);
+        ScheduledFuture<?> heartbeat =
+                heartbeatExecutor.scheduleWithFixedDelay(
+                        () -> renew(lockUniqueName, ownerId, renewalFailure),
+                        heartbeatIntervalMillis,
+                        heartbeatIntervalMillis,
+                        TimeUnit.MILLISECONDS);
         try {
-            return callable.call();
+            T result = callable.call();
+            Exception failure = renewalFailure.get();
+            if (failure != null) {
+                throw failure;
+            }
+            return result;
         } finally {
+            heartbeat.cancel(true);
+            heartbeatExecutor.shutdownNow();
             JdbcUtils.release(connections, lockUniqueName, ownerId);
+        }
+    }
+
+    private void renew(
+            String lockUniqueName, String ownerId, AtomicReference<Exception> renewalFailure) {
+        if (renewalFailure.get() != null) {
+            return;
+        }
+        try {
+            if (!JdbcUtils.renew(connections, lockUniqueName, ownerId)) {
+                renewalFailure.compareAndSet(
+                        null,
+                        new IllegalStateException(
+                                "Lost JDBC catalog lock ownership while renewing "
+                                        + lockUniqueName));
+            }
+        } catch (Exception e) {
+            renewalFailure.compareAndSet(
+                    null,
+                    new RuntimeException("Failed to renew JDBC catalog lock " + lockUniqueName, e));
         }
     }
 

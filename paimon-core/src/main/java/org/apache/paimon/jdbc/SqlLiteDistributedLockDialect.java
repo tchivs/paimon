@@ -64,6 +64,19 @@ public class SqlLiteDistributedLockDialect extends AbstractDistributedLockDialec
     }
 
     @Override
+    public String getRenewLockSql() {
+        return "UPDATE "
+                + JdbcUtils.DISTRIBUTED_LOCKS_TABLE_NAME
+                + " SET "
+                + JdbcUtils.ACQUIRED_AT
+                + " = CURRENT_TIMESTAMP WHERE "
+                + JdbcUtils.LOCK_ID
+                + " = ? AND "
+                + JdbcUtils.OWNER_ID
+                + " = ?";
+    }
+
+    @Override
     public String getTryReleaseTimedOutLock() {
         return "DELETE FROM "
                 + JdbcUtils.DISTRIBUTED_LOCKS_TABLE_NAME

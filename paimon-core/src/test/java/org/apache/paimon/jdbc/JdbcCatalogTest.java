@@ -146,6 +146,73 @@ public class JdbcCatalogTest extends CatalogTestBase {
     }
 
     @Test
+    public void testRenewedLockIsNotReleasedAsTimedOut() throws SQLException, InterruptedException {
+        String lockId = "jdbc.testDb.renewedTable";
+        String ownerId = "first-owner";
+        JdbcClientPool connections = ((JdbcCatalog) catalog).getConnections();
+        assertThat(JdbcUtils.acquire(connections, lockId, ownerId, 1000)).isTrue();
+        Thread.sleep(750);
+        assertThat(JdbcUtils.renew(connections, lockId, ownerId)).isTrue();
+        Thread.sleep(750);
+
+        assertThat(JdbcUtils.acquire(connections, lockId, "second-owner", 1000)).isFalse();
+    }
+
+    @Test
+    public void testStaleOwnerCannotRenewReplacementLock()
+            throws SQLException, InterruptedException {
+        String lockId = "jdbc.testDb.replacementTable";
+        JdbcClientPool connections = ((JdbcCatalog) catalog).getConnections();
+        assertThat(JdbcUtils.acquire(connections, lockId, "old-owner", 1000)).isTrue();
+        Thread.sleep(2000);
+        assertThat(JdbcUtils.acquire(connections, lockId, "new-owner", 1000)).isTrue();
+
+        assertThat(JdbcUtils.renew(connections, lockId, "old-owner")).isFalse();
+        assertThat(JdbcUtils.renew(connections, lockId, "new-owner")).isTrue();
+    }
+
+    @Test
+    public void testCatalogLockHeartbeatsWhileCallbackRuns() throws Exception {
+        java.nio.file.Path database =
+                java.nio.file.Files.createTempFile("paimon-jdbc-heartbeat-", ".db");
+        String uri = "jdbc:sqlite:" + database;
+        JdbcClientPool firstConnections = new JdbcClientPool(1, uri, Collections.emptyMap());
+        JdbcClientPool secondConnections = new JdbcClientPool(1, uri, Collections.emptyMap());
+        JdbcUtils.createDistributedLockTable(firstConnections, new Options());
+        JdbcCatalogLock lock = new JdbcCatalogLock(firstConnections, "test", 100, 1000);
+        CountDownLatch entered = new CountDownLatch(1);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<?> first =
+                    executor.submit(
+                            () ->
+                                    lock.runWithLock(
+                                            "test_db",
+                                            "test_table",
+                                            () -> {
+                                                entered.countDown();
+                                                Thread.sleep(2200);
+                                                return null;
+                                            }));
+            assertThat(entered.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(1500);
+
+            assertThat(
+                            JdbcUtils.acquire(
+                                    secondConnections,
+                                    "test.test_db.test_table",
+                                    "second-owner",
+                                    1000))
+                    .isFalse();
+            first.get();
+        } finally {
+            executor.shutdownNow();
+            firstConnections.close();
+            secondConnections.close();
+        }
+    }
+
+    @Test
     public void testIndependentCatalogLocksSerialize() throws Exception {
         java.nio.file.Path database =
                 java.nio.file.Files.createTempFile("paimon-jdbc-lock-", ".db");
