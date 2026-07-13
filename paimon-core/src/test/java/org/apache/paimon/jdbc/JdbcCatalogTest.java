@@ -179,7 +179,8 @@ public class JdbcCatalogTest extends CatalogTestBase {
         JdbcClientPool firstConnections = new JdbcClientPool(1, uri, Collections.emptyMap());
         JdbcClientPool secondConnections = new JdbcClientPool(1, uri, Collections.emptyMap());
         JdbcUtils.createDistributedLockTable(firstConnections, new Options());
-        JdbcCatalogLock lock = new JdbcCatalogLock(firstConnections, "test", 100, 1000);
+        JdbcCatalogLock lock =
+                new JdbcCatalogLock(firstConnections, "test", 100, 8000, 1000, false);
         CountDownLatch entered = new CountDownLatch(1);
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {

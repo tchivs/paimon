@@ -77,6 +77,14 @@ public class CatalogOptions {
                     .defaultValue(Duration.ofMinutes(8))
                     .withDescription("The maximum time to wait for acquiring the lock.");
 
+    public static final ConfigOption<Duration> LOCK_LEASE_TIMEOUT =
+            key("lock-lease-timeout")
+                    .durationType()
+                    .defaultValue(Duration.ofMinutes(1))
+                    .withDescription(
+                            "The JDBC catalog lock lease duration. Active lock holders renew the lease "
+                                    + "while their operation is running.");
+
     public static final ConfigOption<Integer> CLIENT_POOL_SIZE =
             key("client-pool-size")
                     .intType()

@@ -35,12 +35,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.apache.paimon.options.CatalogOptions.LOCK_ACQUIRE_TIMEOUT;
 import static org.apache.paimon.options.CatalogOptions.LOCK_CHECK_MAX_SLEEP;
+import static org.apache.paimon.options.CatalogOptions.LOCK_LEASE_TIMEOUT;
 
 /** Jdbc catalog lock. */
 public class JdbcCatalogLock implements CatalogLock {
     private final JdbcClientPool connections;
     private final long checkMaxSleep;
     private final long acquireTimeout;
+    private final long leaseTimeout;
     private final String catalogKey;
     private final boolean ownsConnections;
 
@@ -49,7 +51,7 @@ public class JdbcCatalogLock implements CatalogLock {
             String catalogKey,
             long checkMaxSleep,
             long acquireTimeout) {
-        this(connections, catalogKey, checkMaxSleep, acquireTimeout, false);
+        this(connections, catalogKey, checkMaxSleep, acquireTimeout, acquireTimeout, false);
     }
 
     public JdbcCatalogLock(
@@ -58,9 +60,26 @@ public class JdbcCatalogLock implements CatalogLock {
             long checkMaxSleep,
             long acquireTimeout,
             boolean ownsConnections) {
+        this(
+                connections,
+                catalogKey,
+                checkMaxSleep,
+                acquireTimeout,
+                acquireTimeout,
+                ownsConnections);
+    }
+
+    public JdbcCatalogLock(
+            JdbcClientPool connections,
+            String catalogKey,
+            long checkMaxSleep,
+            long acquireTimeout,
+            long leaseTimeout,
+            boolean ownsConnections) {
         this.connections = connections;
         this.checkMaxSleep = checkMaxSleep;
         this.acquireTimeout = acquireTimeout;
+        this.leaseTimeout = Math.max(1_000, leaseTimeout);
         this.catalogKey = catalogKey;
         this.ownsConnections = ownsConnections;
     }
@@ -78,7 +97,7 @@ public class JdbcCatalogLock implements CatalogLock {
                             thread.setDaemon(true);
                             return thread;
                         });
-        long heartbeatIntervalMillis = Math.max(100, acquireTimeout / 3);
+        long heartbeatIntervalMillis = Math.max(100, leaseTimeout / 3);
         ScheduledFuture<?> heartbeat =
                 heartbeatExecutor.scheduleWithFixedDelay(
                         () -> renew(lockUniqueName, ownerId, renewalFailure),
@@ -121,7 +140,7 @@ public class JdbcCatalogLock implements CatalogLock {
 
     private void lock(String lockUniqueName, String ownerId)
             throws SQLException, InterruptedException {
-        boolean lock = JdbcUtils.acquire(connections, lockUniqueName, ownerId, acquireTimeout);
+        boolean lock = JdbcUtils.acquire(connections, lockUniqueName, ownerId, leaseTimeout);
         long nextSleep = 50;
         long startRetry = System.currentTimeMillis();
         while (!lock) {
@@ -130,7 +149,7 @@ public class JdbcCatalogLock implements CatalogLock {
                 nextSleep = checkMaxSleep;
             }
             Thread.sleep(nextSleep);
-            lock = JdbcUtils.acquire(connections, lockUniqueName, ownerId, acquireTimeout);
+            lock = JdbcUtils.acquire(connections, lockUniqueName, ownerId, leaseTimeout);
             if (System.currentTimeMillis() - startRetry > acquireTimeout) {
                 break;
             }
@@ -163,5 +182,16 @@ public class JdbcCatalogLock implements CatalogLock {
                                 LOCK_ACQUIRE_TIMEOUT.key(),
                                 TimeUtils.getStringInMillis(LOCK_ACQUIRE_TIMEOUT.defaultValue())))
                 .toMillis();
+    }
+
+    public static long leaseTimeout(Map<String, String> conf) {
+        return Math.max(
+                1_000,
+                TimeUtils.parseDuration(
+                                conf.getOrDefault(
+                                        LOCK_LEASE_TIMEOUT.key(),
+                                        TimeUtils.getStringInMillis(
+                                                LOCK_LEASE_TIMEOUT.defaultValue())))
+                        .toMillis());
     }
 }

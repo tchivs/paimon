@@ -26,6 +26,7 @@ import java.util.Map;
 
 import static org.apache.paimon.jdbc.JdbcCatalogLock.acquireTimeout;
 import static org.apache.paimon.jdbc.JdbcCatalogLock.checkMaxSleep;
+import static org.apache.paimon.jdbc.JdbcCatalogLock.leaseTimeout;
 
 /** Jdbc catalog lock factory. */
 public class JdbcCatalogLockFactory implements CatalogLockFactory {
@@ -49,6 +50,7 @@ public class JdbcCatalogLockFactory implements CatalogLockFactory {
                 lockContext.catalogKey(),
                 checkMaxSleep(optionsMap),
                 acquireTimeout(optionsMap),
+                leaseTimeout(optionsMap),
                 lockContext.ownsConnections());
     }
 }
