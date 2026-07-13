@@ -20,6 +20,7 @@ package org.apache.paimon.jdbc;
 
 import org.apache.paimon.catalog.Catalog;
 import org.apache.paimon.catalog.CatalogContext;
+import org.apache.paimon.catalog.CatalogLock;
 import org.apache.paimon.catalog.CatalogTestBase;
 import org.apache.paimon.catalog.Identifier;
 import org.apache.paimon.fs.Path;
@@ -53,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -141,6 +143,91 @@ public class JdbcCatalogTest extends CatalogTestBase {
         Thread.sleep(2000);
         assertThat(JdbcUtils.acquire(((JdbcCatalog) catalog).getConnections(), lockId, 1000))
                 .isTrue();
+    }
+
+    @Test
+    public void testIndependentCatalogLocksSerialize() throws Exception {
+        java.nio.file.Path database =
+                java.nio.file.Files.createTempFile("paimon-jdbc-lock-", ".db");
+        String uri = "jdbc:sqlite:" + database;
+        JdbcClientPool firstConnections = new JdbcClientPool(1, uri, Collections.emptyMap());
+        JdbcClientPool secondConnections = new JdbcClientPool(1, uri, Collections.emptyMap());
+        CatalogLock firstLock =
+                new JdbcCatalogLockFactory()
+                        .createLock(
+                                new JdbcCatalogLockContext(
+                                        "test", new Options(), firstConnections));
+        CatalogLock secondLock =
+                new JdbcCatalogLockFactory()
+                        .createLock(
+                                new JdbcCatalogLockContext(
+                                        "test", new Options(), secondConnections));
+        CountDownLatch firstEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch secondEntered = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> first =
+                    executor.submit(
+                            () ->
+                                    firstLock.runWithLock(
+                                            "test_db",
+                                            "test_table",
+                                            () -> {
+                                                firstEntered.countDown();
+                                                releaseFirst.await();
+                                                return null;
+                                            }));
+            assertThat(firstEntered.await(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+
+            Future<?> second =
+                    executor.submit(
+                            () ->
+                                    secondLock.runWithLock(
+                                            "test_db",
+                                            "test_table",
+                                            () -> {
+                                                secondEntered.countDown();
+                                                return null;
+                                            }));
+            assertThat(secondEntered.await(200, java.util.concurrent.TimeUnit.MILLISECONDS))
+                    .isFalse();
+            releaseFirst.countDown();
+            first.get();
+            second.get();
+            assertThat(secondEntered.await(3, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        } finally {
+            releaseFirst.countDown();
+            executor.shutdownNow();
+            firstLock.close();
+            secondLock.close();
+            java.nio.file.Files.deleteIfExists(database);
+        }
+    }
+
+    @Test
+    public void testExpiredOwnerCannotReleaseReplacementLock() throws Exception {
+        java.nio.file.Path database =
+                java.nio.file.Files.createTempFile("paimon-jdbc-fenced-lock-", ".db");
+        String uri = "jdbc:sqlite:" + database;
+        JdbcClientPool connections = new JdbcClientPool(1, uri, Collections.emptyMap());
+        JdbcCatalogLockContext context =
+                new JdbcCatalogLockContext("test", new Options(), connections);
+        new JdbcCatalogLockFactory().createLock(context).close();
+
+        String lockId = "test.test_db.test_table";
+        try {
+            assertThat(JdbcUtils.acquire(connections, lockId, "expired-owner", 1000)).isTrue();
+            Thread.sleep(2000);
+            assertThat(JdbcUtils.acquire(connections, lockId, "replacement-owner", 5000)).isTrue();
+
+            JdbcUtils.release(connections, lockId, "expired-owner");
+            assertThat(JdbcUtils.acquire(connections, lockId, "third-owner", 1000)).isFalse();
+            JdbcUtils.release(connections, lockId, "replacement-owner");
+        } finally {
+            connections.close();
+            java.nio.file.Files.deleteIfExists(database);
+        }
     }
 
     @Test

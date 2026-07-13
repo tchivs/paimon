@@ -126,7 +126,9 @@ public class CatalogEnvironment implements Serializable {
     public SnapshotCommit snapshotCommit(SnapshotManager snapshotManager) {
         SnapshotCommit snapshotCommit;
         if (catalogLoader != null && supportsVersionManagement) {
-            snapshotCommit = new CatalogSnapshotCommit(catalogLoader.load(), identifier, uuid);
+            snapshotCommit =
+                    new CatalogSnapshotCommit(
+                            catalogLoader.load(), identifier, uuid, snapshotManager);
         } else {
             Lock lock =
                     Optional.ofNullable(lockFactory)

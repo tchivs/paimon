@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 
 import static org.apache.paimon.options.CatalogOptions.LOCK_ACQUIRE_TIMEOUT;
@@ -62,16 +63,18 @@ public class JdbcCatalogLock implements CatalogLock {
     @Override
     public <T> T runWithLock(String database, String table, Callable<T> callable) throws Exception {
         String lockUniqueName = String.format("%s.%s.%s", catalogKey, database, table);
-        lock(lockUniqueName);
+        String ownerId = UUID.randomUUID().toString();
+        lock(lockUniqueName, ownerId);
         try {
             return callable.call();
         } finally {
-            JdbcUtils.release(connections, lockUniqueName);
+            JdbcUtils.release(connections, lockUniqueName, ownerId);
         }
     }
 
-    private void lock(String lockUniqueName) throws SQLException, InterruptedException {
-        boolean lock = JdbcUtils.acquire(connections, lockUniqueName, acquireTimeout);
+    private void lock(String lockUniqueName, String ownerId)
+            throws SQLException, InterruptedException {
+        boolean lock = JdbcUtils.acquire(connections, lockUniqueName, ownerId, acquireTimeout);
         long nextSleep = 50;
         long startRetry = System.currentTimeMillis();
         while (!lock) {
@@ -80,7 +83,7 @@ public class JdbcCatalogLock implements CatalogLock {
                 nextSleep = checkMaxSleep;
             }
             Thread.sleep(nextSleep);
-            lock = JdbcUtils.acquire(connections, lockUniqueName, acquireTimeout);
+            lock = JdbcUtils.acquire(connections, lockUniqueName, ownerId, acquireTimeout);
             if (System.currentTimeMillis() - startRetry > acquireTimeout) {
                 break;
             }

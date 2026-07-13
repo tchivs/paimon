@@ -20,7 +20,6 @@ package org.apache.paimon.jdbc;
 
 import org.apache.paimon.options.Options;
 
-import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -28,36 +27,109 @@ import java.sql.SQLException;
 /** Jdbc distributed lock interface. */
 public abstract class AbstractDistributedLockDialect implements JdbcDistributedLockDialect {
 
+    private static final int OWNER_ID_MAX_LENGTH = 64;
+
     @Override
     public void createTable(JdbcClientPool connections, Options options)
             throws SQLException, InterruptedException {
         Integer lockKeyMaxLength = JdbcCatalogOptions.lockKeyMaxLength(options);
         connections.run(
                 conn -> {
-                    DatabaseMetaData dbMeta = conn.getMetaData();
-                    ResultSet tableExists =
-                            dbMeta.getTables(
-                                    null, null, JdbcUtils.DISTRIBUTED_LOCKS_TABLE_NAME, null);
-                    if (tableExists.next()) {
-                        return true;
+                    try (ResultSet tableExists =
+                            conn.getMetaData()
+                                    .getTables(
+                                            null,
+                                            null,
+                                            JdbcUtils.DISTRIBUTED_LOCKS_TABLE_NAME,
+                                            null)) {
+                        if (tableExists.next()) {
+                            ensureOwnerColumn(conn);
+                            return true;
+                        }
                     }
                     String createDistributedLockTableSql =
                             String.format(getCreateTableSql(), lockKeyMaxLength);
-                    return conn.prepareStatement(createDistributedLockTableSql).execute();
+                    try (PreparedStatement statement =
+                            conn.prepareStatement(createDistributedLockTableSql)) {
+                        statement.execute();
+                        return true;
+                    } catch (SQLException e) {
+                        // Another catalog process may create the table after the metadata check.
+                        // Re-check on the same connection before surfacing a real DDL failure.
+                        try (ResultSet tableExists =
+                                conn.getMetaData()
+                                        .getTables(
+                                                null,
+                                                null,
+                                                JdbcUtils.DISTRIBUTED_LOCKS_TABLE_NAME,
+                                                null)) {
+                            if (tableExists.next()) {
+                                ensureOwnerColumn(conn);
+                                return true;
+                            }
+                        }
+                        throw e;
+                    }
                 });
+    }
+
+    private void ensureOwnerColumn(java.sql.Connection connection) throws SQLException {
+        try (ResultSet columns =
+                connection
+                        .getMetaData()
+                        .getColumns(
+                                null,
+                                null,
+                                JdbcUtils.DISTRIBUTED_LOCKS_TABLE_NAME,
+                                JdbcUtils.OWNER_ID)) {
+            if (columns.next()) {
+                return;
+            }
+        }
+
+        try (PreparedStatement statement = connection.prepareStatement(getAddOwnerColumnSql())) {
+            statement.execute();
+        } catch (SQLException e) {
+            // Another catalog process may migrate an existing table concurrently.
+            try (ResultSet columns =
+                    connection
+                            .getMetaData()
+                            .getColumns(
+                                    null,
+                                    null,
+                                    JdbcUtils.DISTRIBUTED_LOCKS_TABLE_NAME,
+                                    JdbcUtils.OWNER_ID)) {
+                if (columns.next()) {
+                    return;
+                }
+            }
+            throw e;
+        }
+    }
+
+    protected String getAddOwnerColumnSql() {
+        return "ALTER TABLE "
+                + JdbcUtils.DISTRIBUTED_LOCKS_TABLE_NAME
+                + " ADD COLUMN "
+                + JdbcUtils.OWNER_ID
+                + " VARCHAR("
+                + OWNER_ID_MAX_LENGTH
+                + ")";
     }
 
     public abstract String getCreateTableSql();
 
     @Override
-    public boolean lockAcquire(JdbcClientPool connections, String lockId, long timeoutMillSeconds)
+    public boolean lockAcquire(
+            JdbcClientPool connections, String lockId, String ownerId, long timeoutMillSeconds)
             throws SQLException, InterruptedException {
         return connections.run(
                 connection -> {
                     try (PreparedStatement preparedStatement =
                             connection.prepareStatement(getLockAcquireSql())) {
                         preparedStatement.setString(1, lockId);
-                        preparedStatement.setLong(2, timeoutMillSeconds / 1000);
+                        preparedStatement.setString(2, ownerId);
+                        preparedStatement.setLong(3, timeoutMillSeconds / 1000);
                         return preparedStatement.executeUpdate() > 0;
                     } catch (SQLException ex) {
                         return false;
@@ -68,13 +140,14 @@ public abstract class AbstractDistributedLockDialect implements JdbcDistributedL
     public abstract String getLockAcquireSql();
 
     @Override
-    public boolean releaseLock(JdbcClientPool connections, String lockId)
+    public boolean releaseLock(JdbcClientPool connections, String lockId, String ownerId)
             throws SQLException, InterruptedException {
         return connections.run(
                 connection -> {
                     try (PreparedStatement preparedStatement =
                             connection.prepareStatement(getReleaseLockSql())) {
                         preparedStatement.setString(1, lockId);
+                        preparedStatement.setString(2, ownerId);
                         return preparedStatement.executeUpdate() > 0;
                     }
                 });

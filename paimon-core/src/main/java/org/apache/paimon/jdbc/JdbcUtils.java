@@ -350,6 +350,7 @@ public class JdbcUtils {
     // Distributed locks table
     static final String DISTRIBUTED_LOCKS_TABLE_NAME = "paimon_distributed_locks";
     static final String LOCK_ID = "lock_id";
+    static final String OWNER_ID = "owner_id";
     static final String ACQUIRED_AT = "acquired_at";
     static final String EXPIRE_TIME = "expire_time_seconds";
 
@@ -809,6 +810,12 @@ public class JdbcUtils {
     public static boolean acquire(
             JdbcClientPool connections, String lockId, long timeoutMillSeconds)
             throws SQLException, InterruptedException {
+        return acquire(connections, lockId, "legacy", timeoutMillSeconds);
+    }
+
+    public static boolean acquire(
+            JdbcClientPool connections, String lockId, String ownerId, long timeoutMillSeconds)
+            throws SQLException, InterruptedException {
         JdbcDistributedLockDialect distributedLockDialect =
                 DistributedLockDialectFactory.create(connections.getProtocol());
         // Check and clear expire lock.
@@ -816,13 +823,18 @@ public class JdbcUtils {
         if (affectedRows > 0) {
             LOG.debug("Successfully cleared " + affectedRows + " lock records");
         }
-        return distributedLockDialect.lockAcquire(connections, lockId, timeoutMillSeconds);
+        return distributedLockDialect.lockAcquire(connections, lockId, ownerId, timeoutMillSeconds);
     }
 
     public static void release(JdbcClientPool connections, String lockId)
             throws SQLException, InterruptedException {
+        release(connections, lockId, "legacy");
+    }
+
+    public static void release(JdbcClientPool connections, String lockId, String ownerId)
+            throws SQLException, InterruptedException {
         DistributedLockDialectFactory.create(connections.getProtocol())
-                .releaseLock(connections, lockId);
+                .releaseLock(connections, lockId, ownerId);
     }
 
     private static String deletePropertiesStatement(Set<String> properties) {

@@ -28,6 +28,7 @@ import org.apache.paimon.utils.SnapshotManager;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -192,6 +193,68 @@ public class RenamingSnapshotCommitTest {
                 .hasMessageContaining("configured Paimon catalog lock")
                 .hasMessageContaining("object-store");
         assertThat(fileIO.exists(snapshotManager.snapshotPath(1L))).isFalse();
+    }
+
+    @Test
+    public void testCatalogSnapshotCommitUsesCompareAndSetCapability(
+            @TempDir java.nio.file.Path tmp) throws Exception {
+        FileIO fileIO = LocalFileIO.create();
+        Path tablePath = new Path(tmp.toUri());
+        SnapshotManager snapshotManager = new SnapshotManager(fileIO, tablePath, null, null, null);
+
+        Catalog catalog =
+                Mockito.mock(
+                        Catalog.class,
+                        Mockito.withSettings().extraInterfaces(AtomicSnapshotCommitCatalog.class));
+        AtomicSnapshotCommitCatalog capability = (AtomicSnapshotCommitCatalog) catalog;
+        Mockito.when(capability.supportsAtomicSnapshotCommit()).thenReturn(true);
+        Mockito.when(
+                        catalog.commitSnapshot(
+                                Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any()))
+                .thenReturn(true);
+
+        CatalogSnapshotCommit commit =
+                new CatalogSnapshotCommit(
+                        catalog, Identifier.create("db", "table"), null, snapshotManager);
+        assertThat(commit.supportsAtomicCommitValidation()).isTrue();
+
+        List<Snapshot> observed = new ArrayList<>();
+        assertThat(
+                        commit.commit(
+                                createSnapshot(1L),
+                                "main",
+                                Collections.emptyList(),
+                                (latest, committing) -> {
+                                    observed.add(latest);
+                                    return true;
+                                }))
+                .isTrue();
+        assertThat(observed).containsExactly((Snapshot) null);
+        Mockito.verify(catalog)
+                .commitSnapshot(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    public void testCatalogSnapshotCommitRejectsMissingCompareAndSetCapability(
+            @TempDir java.nio.file.Path tmp) throws Exception {
+        FileIO fileIO = LocalFileIO.create();
+        SnapshotManager snapshotManager =
+                new SnapshotManager(fileIO, new Path(tmp.toUri()), null, null, null);
+        Catalog catalog = Mockito.mock(Catalog.class);
+        CatalogSnapshotCommit commit =
+                new CatalogSnapshotCommit(
+                        catalog, Identifier.create("db", "table"), null, snapshotManager);
+
+        assertThat(commit.supportsAtomicCommitValidation()).isFalse();
+        assertThrows(
+                UnsupportedOperationException.class,
+                () ->
+                        commit.commit(
+                                createSnapshot(1L),
+                                "main",
+                                Collections.emptyList(),
+                                (latest, committing) -> true));
+        Mockito.verifyNoInteractions(catalog);
     }
 
     private static Snapshot createSnapshot(long id) throws IOException {

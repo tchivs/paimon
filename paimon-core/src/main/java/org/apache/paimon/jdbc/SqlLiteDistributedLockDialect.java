@@ -27,6 +27,8 @@ public class SqlLiteDistributedLockDialect extends AbstractDistributedLockDialec
                 + "("
                 + JdbcUtils.LOCK_ID
                 + " VARCHAR(%s) NOT NULL,"
+                + JdbcUtils.OWNER_ID
+                + " VARCHAR(64) NOT NULL,"
                 + JdbcUtils.ACQUIRED_AT
                 + " TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,"
                 + JdbcUtils.EXPIRE_TIME
@@ -44,8 +46,10 @@ public class SqlLiteDistributedLockDialect extends AbstractDistributedLockDialec
                 + " ("
                 + JdbcUtils.LOCK_ID
                 + ","
+                + JdbcUtils.OWNER_ID
+                + ","
                 + JdbcUtils.EXPIRE_TIME
-                + ") VALUES (?,?)";
+                + ") VALUES (?,?,?)";
     }
 
     @Override
@@ -54,6 +58,8 @@ public class SqlLiteDistributedLockDialect extends AbstractDistributedLockDialec
                 + JdbcUtils.DISTRIBUTED_LOCKS_TABLE_NAME
                 + " WHERE "
                 + JdbcUtils.LOCK_ID
+                + " = ? AND "
+                + JdbcUtils.OWNER_ID
                 + " = ?";
     }
 

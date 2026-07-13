@@ -23,6 +23,7 @@ import org.apache.paimon.PagedList;
 import org.apache.paimon.Snapshot;
 import org.apache.paimon.TableType;
 import org.apache.paimon.append.AppendCompactTask;
+import org.apache.paimon.catalog.AtomicSnapshotCommitCatalog;
 import org.apache.paimon.catalog.Catalog;
 import org.apache.paimon.catalog.CatalogContext;
 import org.apache.paimon.catalog.CatalogTestBase;
@@ -157,6 +158,11 @@ public abstract class RESTCatalogTest extends CatalogTestBase {
     protected ConfigResponse config;
     protected Options options = new Options();
     protected RESTCatalog restCatalog;
+
+    @Test
+    void testRestCatalogDoesNotClaimAtomicSnapshotValidation() {
+        assertThat(restCatalog).isNotInstanceOf(AtomicSnapshotCommitCatalog.class);
+    }
 
     @Test
     public void testListDatabases() throws Exception {

@@ -42,6 +42,7 @@ public class JdbcCatalogLockFactory implements CatalogLockFactory {
     @Override
     public CatalogLock createLock(CatalogLockContext context) {
         JdbcCatalogLockContext lockContext = (JdbcCatalogLockContext) context;
+        lockContext.ensureLockTable();
         Map<String, String> optionsMap = lockContext.options().toMap();
         return new JdbcCatalogLock(
                 lockContext.connections(),

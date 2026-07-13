@@ -22,11 +22,14 @@ import org.apache.paimon.catalog.CatalogLockContext;
 import org.apache.paimon.options.CatalogOptions;
 import org.apache.paimon.options.Options;
 
+import java.sql.SQLException;
+
 /** Jdbc lock context. */
 public class JdbcCatalogLockContext implements CatalogLockContext {
 
     private transient JdbcClientPool connections;
     private transient boolean ownsConnections;
+    private transient volatile boolean lockTableInitialized;
     private final String catalogKey;
     private final Options options;
 
@@ -64,5 +67,21 @@ public class JdbcCatalogLockContext implements CatalogLockContext {
 
     public String catalogKey() {
         return catalogKey;
+    }
+
+    synchronized void ensureLockTable() {
+        if (lockTableInitialized) {
+            return;
+        }
+        try {
+            JdbcUtils.createDistributedLockTable(connections(), options);
+            lockTableInitialized = true;
+        } catch (SQLException e) {
+            throw new RuntimeException("Cannot initialize JDBC distributed lock table", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(
+                    "Interrupted while initializing JDBC distributed lock table", e);
+        }
     }
 }

@@ -16,24 +16,18 @@
  * limitations under the License.
  */
 
-package org.apache.paimon.jdbc;
+package org.apache.paimon.catalog;
 
-import org.apache.paimon.options.Options;
+import org.apache.paimon.annotation.Public;
 
-import java.sql.SQLException;
-
-/** Jdbc distributed lock interface. */
-public interface JdbcDistributedLockDialect {
-    void createTable(JdbcClientPool connections, Options options)
-            throws SQLException, InterruptedException;
-
-    boolean lockAcquire(
-            JdbcClientPool connections, String lockId, String ownerId, long timeoutMillSeconds)
-            throws SQLException, InterruptedException;
-
-    boolean releaseLock(JdbcClientPool connections, String lockId, String ownerId)
-            throws SQLException, InterruptedException;
-
-    int tryReleaseTimedOutLock(JdbcClientPool connections, String lockId)
-            throws SQLException, InterruptedException;
+/**
+ * Capability of a catalog whose snapshot commit is an atomic compare-and-set.
+ *
+ * <p>The catalog must reject a snapshot when a newer snapshot is already visible and return {@code
+ * false}. This allows a client-side commit validator to run against the observed latest snapshot
+ * while the catalog CAS closes the race before publication.
+ */
+@Public
+public interface AtomicSnapshotCommitCatalog {
+    boolean supportsAtomicSnapshotCommit();
 }

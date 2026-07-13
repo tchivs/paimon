@@ -41,7 +41,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /** A {@link Catalog} to delegate all operations to another {@link Catalog}. */
-public abstract class DelegateCatalog implements Catalog {
+public abstract class DelegateCatalog implements Catalog, AtomicSnapshotCommitCatalog {
 
     protected final Catalog wrapped;
 
@@ -51,6 +51,14 @@ public abstract class DelegateCatalog implements Catalog {
 
     public Catalog wrapped() {
         return wrapped;
+    }
+
+    @Override
+    public boolean supportsAtomicSnapshotCommit() {
+        if (!(wrapped instanceof AtomicSnapshotCommitCatalog)) {
+            return false;
+        }
+        return ((AtomicSnapshotCommitCatalog) wrapped).supportsAtomicSnapshotCommit();
     }
 
     @Override
